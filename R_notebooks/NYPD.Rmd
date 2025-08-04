@@ -1,0 +1,493 @@
+---
+title: 'NYPD: Time and Space of Shooting Incidents'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+## Data Description
+
+The data for this project is from the New York City Open Data portal.  
+The dataset is the NYPD Shooting Incident Data (Historic) and contains information on shooting incidents in New York City.  
+The data is available in CSV format and can be downloaded from the following link:  
+https://catalog.data.gov/dataset/nypd-shooting-incident-data-historic  
+
+Detailed description of the dataset was provided by the NYPD:  
+Details on data description: https://data.cityofnewyork.us/Public-Safety/NYPD-Shooting-Incident-Data-Historic-/833y-fsy8/about_data
+  
+```{r imports}
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(dplyr))
+```
+
+
+### Data Import and Structure
+  
+```{r data import}
+df <- read.csv('https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD')
+head(df, 2)
+names(df) <- tolower(names(df))
+str(df)
+```
+
+| Column Name             | Description                                                                                                                                                                                                                                                                                                                                                                          | API Field Name         | Data Type            |
+|-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------|----------------------|
+| INCIDENT_KEY            | Randomly generated persistent ID for each arrest                                                                                                                                                                                                                                                                    | incident_key           | Text                 |
+| OCCUR_DATE              | Exact date of the shooting incident                                                                                                                                                                                                                                                                                                                                                 | occur_date             | Floating Timestamp   |
+| OCCUR_TIME              | Exact time of the shooting incident                                                                                                                                                                                                                                                                                                                                                 | occur_time             | Text                 |
+| BORO                    | Borough where the shooting incident occurred                                                                                                                                                                                                                                                                                                                                        | boro                   | Text                 |
+| LOC_OF_OCCUR_DESC       | Location where the shooting incident occurred                                                                                                                                                                                                                                                                                                                                       | loc_of_occur_desc      | Text                 |
+| PRECINCT                | Precinct where the shooting incident occurred                                                                                                                                                                                                                                                                                                                                       | precinct               | Number               |
+| JURISDICTION_CODE       | Jurisdiction where the shooting incident occurred. Jurisdiction codes 0(Patrol), 1(Transit) and 2(Housing) represent NYPD whilst codes 3 and more represent non NYPD jurisdictions                                                                                                                                                                                                 | jurisdiction_code      | Number               |
+| LOC_CLASSFCTN_DESC      | Classification of the location where the shooting incident occurred                                                                                                                                                                                                                                                                                                                 | loc_classfctn_desc     | Text                 |
+| LOCATION_DESC           | Location of the shooting incident                                                                                                                                                                                                                                                                                                                                                   | location_desc          | Text                 |
+| STATISTICAL_MURDER_FLAG | Shooting resulted in the victim’s death which would be counted as a murder                                                                                                                                                                                                                                                                                                          | statistical_murder_flag| Checkbox             |
+| PERP_AGE_GROUP          | Perpetrator’s age within a category                                                                                                                                                                                                                                                                                                                                                 | perp_age_group         | Text                 |
+| PERP_SEX                | Perpetrator’s sex description                                                                                                                                                                                                                                                                                                                                                       | perp_sex               | Text                 |
+| PERP_RACE               | Perpetrator’s race description                                                                                                                                                                                                                                                                                                                                                      | perp_race              | Text                 |
+| VIC_AGE_GROUP           | Victim’s age within a category                                                                                                                                                                                                                                                                                                                                                      | vic_age_group          | Text                 |
+| VIC_SEX                 | Victim’s sex description                                                                                                                                                                                                                                                                                                                                                            | vic_sex                | Text                 |
+| VIC_RACE                | Victim’s race description                                                                                                                                                                                                                                                                                                                                                           | vic_race               | Text                 |
+| X_COORD_CD              | Midblock X-coordinate for New York State Plane Coordinate System, Long Island Zone, NAD 83, units feet (FIPS 3104)                                                                                                                                                                                                                                                                    | x_coord_cd             | Text                 |
+| Y_COORD_CD              | Midblock Y-coordinate for New York State Plane Coordinate System, Long Island Zone, NAD 83, units feet (FIPS 3104)                                                                                                                                                                                                                                                                    | y_coord_cd             | Text                 |
+| Latitude                | Latitude coordinate for Global Coordinate System, WGS 1984, decimal degrees (EPSG 4326)                                                                                                                                                                                                                                                                                              | latitude               | Number               |
+| Longitude               | Longitude coordinate for Global Coordinate System, WGS 1984, decimal degrees (EPSG 4326)                                                                                                                                                                                                                                                                                             | longitude              | Number               |
+| Lon_Lat                 | Longitude and Latitude Coordinates for mapping                                                                                                                                                                                                                                                                                                                                      | geocoded_column        | Point                |
+
+
+## Tidy and Transforming Data
+
+We will proceed all the columns of the dataset one by one to study them and decide what to do with them.  
+The important limitation is that due to the limited size of the assignment, I would like to focus on data related to time and space of the incidents.
+
+### Unique Identifiers, Dates, and Times  
+
+**incendent_key**
+a unique identifier for each incident (int)  
+While it should be unique, we will check if there are any duplicates.  
+There are duplicates by incident_key, as well as by key time and location.  
+Thus we can assume that for each incident there are multiple records, probably related to several victims.  
+
+```{r incendent_key time and date}
+length(unique(df$incident_key))
+sum(duplicated(df$incident_key)) # 6168
+
+sum(duplicated(df[c("incident_key", "occur_date", 'lon_lat', 'precinct')])) # 6168
+# full duplicates
+sum(duplicated(df)) # 0
+str(df)
+```
+
+**occure_date** - character in format "MM/DD/YYYY" - we need to convert to date  
+**occure_time** - character in format "HH:MM:SS" - we need to convert to time (without date)  
+the detailed time of incindent may be of lesser interest, however its destribution by hour is something to be studied
+
+```{r time and date}
+df$occur_date <- as.Date(df$occur_date, format = "%m/%d/%Y")
+
+df$occur_time <- as.POSIXct(df$occur_time, format = "%H:%M:%S")
+df$hour_of_occurance <- as.numeric(format(df$occur_time, "%H"))
+
+df <- subset(df, select = -c(occur_time))
+```
+
+
+### Locations
+
+**boro**
+character - we need to convert to factor it is the bigger area of the city
+
+
+```{r locations boro}
+length(unique(df$boro))
+unique(df$boro)
+sum(is.na(df$boro)) # 0
+df$boro <- factor(df$boro)
+```
+
+**loc_of_occur_desc**
+character - there are to many missing values - remove this data
+
+```{r locations loc_of_occur_desc}
+length(unique(df$loc_of_occur_desc))
+unique(df$loc_of_occur_desc)
+df$loc_of_occur_desc <- factor(df$loc_of_occur_desc)
+
+# count number of rows for each loc_of_occur_desc
+df %>%
+  group_by(loc_of_occur_desc) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  head(10)
+
+# delete this column
+df <- subset(df, select = -c(loc_of_occur_desc))
+```
+
+**precinct**
+integer - but it is factor by nature - we would need to convert it to factor  
+However, this is very detailed location information, which can be skipped for this analysis.
+**jurisdiction_code**
+integer - but it is factor by nature - we need to convert to factor
+
+```{r locations precinct & jurisdiction_code}
+summary(df$precinct)
+df <- subset(df, select = -c(precinct))
+
+length(unique(df$jurisdiction_code))
+unique(df$jurisdiction_code)
+df$jurisdiction_code <- factor(df$jurisdiction_code)
+sum(is.na(df$jurisdiction_code))
+```
+
+
+**loc_classfctn_desc**
+character - we would need to convert to factor the location classification, however there are to many missing values  
+**location_desc** 
+too many missing values - remove this data  
+**coordinates**  
+We will drop all the coordinates (x_coord_cd, y_coord_cd, latitude, longitude, lon_lat)  
+Analysis of detailed geographical data is out of scope of this project.  
+
+```{r location classification}
+length(unique(df$loc_classfctn_desc))
+unique(df$loc_classfctn_desc)
+# (null) and empty string should be treated as missing values
+df$loc_classfctn_desc[df$loc_classfctn_desc == "(null)" | df$loc_classfctn_desc == ""] <- NA
+df$loc_classfctn_desc <- factor(df$loc_classfctn_desc)
+
+# count all the data for this one for each factor
+df %>%
+  group_by(loc_classfctn_desc) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count)) %>%
+  head(10)
+
+df <- subset(df, select = -c(loc_classfctn_desc))
+
+length(unique(df$location_desc))
+unique(df$location_desc)
+df <- subset(df, select = -c(location_desc))
+
+# drop all the coordinates
+df <- subset(df, select = -c(x_coord_cd, y_coord_cd, latitude, longitude, lon_lat))
+```
+
+### Other data fields
+Information on the age, sex, and race of the people involved is skipped in this analysis.  
+While I found this an extremely important topic, I believe it will be studied in other work.  
+Also, I do not have a background in US life, and my bias is that I am out of context.  
+
+**statistical_murder_flag**
+we need to bring it back to bool
+
+```{r information about people}
+# Drop columns per_age_group, perp_sex, perp_race, vic_age_group, vic_sex, vic_race
+df <- subset(df, select = -c(perp_age_group, perp_sex, perp_race, vic_age_group, vic_sex, vic_race))
+
+length(unique(df$statistical_murder_flag))
+unique(df$statistical_murder_flag)
+
+# bring it to bool
+df$statistical_murder_flag <- as.logical(df$statistical_murder_flag)
+```
+
+
+```{r data after cleaning}
+str(df)
+```
+
+
+## Vusyalising, Analyzing, and Modeling Data  
+
+### Data and time related analysis  
+
+At first, we will study how the number of incidents depends on time.
+
+```{r incindents by week}
+# First, let's calculate unique incidents by week
+df_weekly <- df %>%
+  mutate(week = floor_date(occur_date, "week")) %>%
+  group_by(week) %>%
+  summarize(unique_incidents = n_distinct(incident_key))
+
+# Scatter plot of unique incidents by week
+p1 <- ggplot(df_weekly, aes(x = week, y = unique_incidents)) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") +
+  labs(
+    title = "Number of Unique Incidents per Week",
+    x = "Week",
+    y = "Unique Incidents",
+    caption = "Source: Incident Data"
+  ) +
+  theme_minimal()
+
+print(p1)
+```
+
+First of all, **the overall number of incindents does not clearly decline over time**.  
+While there was decline in mid 2010s, it did not become a trend.  
+May be COVID-19 pandemic had an impact on the number of incidents - which spiked at 2020 and 2021.  
+In future years it will be interesting to see if the number of incidents will decline again.  
+There is clearly visible seasonability of the incidents, which we will study in more detail later.  
+
+``` {r total number of incidents}
+# Calculate summary statistics
+total_unique_incidents <- n_distinct(df$incident_key)
+avg_weekly_incidents <- mean(df_weekly$unique_incidents)
+
+# Print the summary statistics
+cat("Total number of unique incidents:", total_unique_incidents, "\n")
+cat("Average number of unique incidents per week:", round(avg_weekly_incidents, 2), "\n")
+```
+
+Astonishingly, the average number of incidents per week is 24.  
+Which is **more than 3 shootings per day**.
+
+``` {r incendents by hour}
+# Calculate unique incidents by hour (normalized)
+df_hourly <- df %>%
+  group_by(hour_of_occurance) %>%
+  summarize(
+    unique_incidents = n_distinct(incident_key),
+    .groups = "drop"
+  ) %>%
+  mutate(normalized_incidents = unique_incidents / sum(unique_incidents))
+
+# Bar chart of unique incidents by hour (normalized)
+p3 <- ggplot(df_hourly, aes(x = hour_of_occurance, y = normalized_incidents)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(
+    title = "Normalized Distribution of Unique Incidents by Hour",
+    x = "Hour of Occurrence",
+    y = "Proportion of Incidents",
+    caption = "Source: Incident Data"
+  ) +
+  scale_x_continuous(breaks = 0:23) +
+  theme_minimal()
+
+print(p3)
+```
+
+Clearly the safest time is between 6 and 8 am. With peak of incidents around midnight.  
+
+### Place and jurisdiction related analysis
+
+``` {r areas}
+boro_counts <- df %>%
+  count(boro) %>%
+  mutate(percentage = n/sum(n) * 100)
+
+ggplot(boro_counts, aes(x = reorder(boro, -n), y = n)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            vjust = -0.5, size = 3) +
+  labs(title = "Number of Shooting Incidents by Borough",
+       x = "Borough", y = "Number of Incidents") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+**Brooklyn** is the most dangerous borough with 40% of all incidents.  
+**Staten Island** is the safest borough with only 3% of all incidents.  
+It would be important to compare the number of incidents with the population of each borough.  
+
+``` {r areas over time}
+df_boro_yearly <- df %>%
+  mutate(year = year(occur_date)) %>%
+  group_by(year, boro) %>%
+  summarize(unique_incidents = n_distinct(incident_key), .groups = "drop")
+
+
+ggplot(df_boro_yearly, aes(x = year, y = unique_incidents, color = boro)) +
+  geom_line() +
+  labs(
+    title = "Number of Unique Incidents by Year and Borough",
+    x = "Year",
+    y = "Unique Incidents",
+    caption = "Source: Incident Data"
+  ) +
+  theme_minimal()
+```
+
+Pre-COVID dynamics was positive or Brooklyn and Bronx, while rather steady for Manhattan, Queens, and Staten Island.
+
+``` {r jurisdiction}
+jurisdiction_counts <- df %>%
+  count(jurisdiction_code) %>%
+  mutate(percentage = n/sum(n) * 100)
+
+ggplot(jurisdiction_counts, aes(x = as.factor(jurisdiction_code), y = n)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            vjust = -0.5, size = 3) +
+  labs(title = "Number of Shooting Incidents by Jurisdiction Code",
+       x = "Jurisdiction Code", y = "Number of Incidents") +
+  theme_minimal()
+
+```
+
+Jurisdiction codes 0(Patrol), 1(Transit) and 2(Housing).  
+Clearly the majority of incidents are in the Patrol jurisdiction with over 80$% of all incidents. 
+
+## Modeling Data 
+
+We will focus our attnetion on time-related dependancies for this report.  
+First with relation to hour of the day.  
+
+``` {r modeling}
+
+df_hourly <- df %>%
+  group_by(hour_of_occurance) %>%
+  summarize(unique_incidents = n_distinct(incident_key), .groups = "drop")
+
+
+model_1 <- lm(unique_incidents ~ hour_of_occurance, data = df_hourly)
+summary(model_1)
+
+ggplot(df_hourly, aes(x = hour_of_occurance, y = unique_incidents)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(
+    title = "Linear Model of Unique Incidents by Hour of Occurrence",
+    x = "Hour of Occurrence",
+    y = "Unique Incidents"
+  ) +
+  theme_minimal()
+``` 
+
+The linear correlation with just hour of day is neglactble.  
+However, if we take how far the hour is from midday, we can see a clear linear correlation.  
+
+``` {r modeling 2}
+df_hourly$hour_from_midday <- abs(df_hourly$hour_of_occurance - 12)
+model_2 <- lm(unique_incidents ~ hour_from_midday, data = df_hourly)
+summary(model_2)
+# Plot the model
+
+ggplot(df_hourly, aes(x = hour_from_midday, y = unique_incidents)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(
+    title = "Linear Model of Unique Incidents by Hour of Occurrence",
+    x = "Hour from Midday",
+    y = "Unique Incidents"
+  ) +
+  theme_minimal()
+```
+
+Another interesting aspect is seasonability on longer time scale.  
+Week and month of the year.  
+
+``` {r incendents by week of the year}
+df$week_of_year <- week(df$occur_date)
+
+df_by_week <- df %>%
+  group_by(week_of_year) %>%
+  summarize(unique_incidents = n_distinct(incident_key), .groups = "drop")
+
+p4 <- ggplot(df_by_week, aes(x = week_of_year, y = unique_incidents)) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") +
+  labs(
+    title = "Number of Unique Incidents per Week",
+    x = "Week of Year",
+    y = "Unique Incidents",
+    caption = "Source: Incident Data"
+  ) +
+  theme_minimal()
+
+print(p4)
+```
+
+There is a clear correlation between the number of incidents and the week of the year.  
+There is also a smaller sized dependancy likely related to week of the month.  
+
+``` {r by month}
+df$month_of_year <- month(df$occur_date)
+
+df_by_month <- df %>%
+  group_by(month_of_year) %>%
+  summarize(unique_incidents = n_distinct(incident_key), .groups = "drop")
+
+p5 <- ggplot(df_by_month, aes(x = month_of_year, y = unique_incidents)) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") +
+  labs(
+    title = "Number of Unique Incidents per Month",
+    x = "Month of Year",
+    y = "Unique Incidents",
+    caption = "Source: Incident Data"
+  ) +
+  theme_minimal()
+
+print(p5)
+```
+
+It is slightly smoothed for months.  
+The peak is in July and August, while the lowest number of incidents is in winter.  
+There is a small increase in the number of incidents around December and January.  
+Probably related to holidays.  
+
+Let's try to model the number of incendents by how far the week is from the middle of the year.  
+
+```{r modeling 3}
+mid_week <- 26
+df_by_week$week_from_mid_year <- abs(df_by_week$week_of_year - mid_week)
+model_3 <- lm(unique_incidents ~ week_from_mid_year, data = df_by_week)
+
+summary(model_3)
+
+# Plot the model
+ggplot(df_by_week, aes(x = week_from_mid_year, y = unique_incidents)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(
+    title = "Linear Model of Unique Incidents by Week from Mid-Year",
+    x = "Week from Mid-Year",
+    y = "Unique Incidents"
+  ) +
+  theme_minimal()
+```
+
+We can see that the more far it is from summer the less incidents there are.  
+
+## Bias  
+### Bias from Data  
+Even by glance at the data we can see that there are many missing values.  
+For some features, the majority of the values are missing.  
+It does indicate that the data is not complete.  
+
+Another important aspect is that it is real-world data collected by the government.  
+Thus, it can have hidden correlations and biases.  
+E.g., some parts of the city are less covered by police and thus the number of incidents is lower.  
+
+### Personal Bias
+The author of this report has been once in the US, namely in New York City.  
+However, I just wandered around the city and did not have any experience with police or crime (which I am happy about, seeing the numbers now).  
+Thus, I do not possess an understanding of the US life and culture.  
+Neither the different locations in the city nor how the police work there.  
+While, in a way, it protects me from being biased by my own experience.  
+This limits my understanding of the domain, which is biased in itself.  
+
+## Conclusion  
+In this short report, we have studied the NYPD shooting incident data.  
+The data was cleaned and transformed.  
+The study was focused on time and space of the incidents, other features were skipped.  
+It was found that there is a clear seasonality of the incidents.  
+The safest is morning time in winter, while the most dangerous is midnight in summer.  
+Modeling supported the findings.  
+Geographically Staten Island is the safest borough, while Brooklyn is the most dangerous.  
+However, data on population is required to support this claim.  
+The bias of data and the author was discussed.  
+
+## P.S.  
+Thank you for reading this report.  
+
+``` {r session info} 
+sessionInfo()
+```

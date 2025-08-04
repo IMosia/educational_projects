@@ -1,0 +1,559 @@
+---
+title: 'COVID-19 cases studies'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+## Introduction
+
+This project is dedicated to analysis of COVID-19 cases data.  
+The project is based on the data provided by Johns Hopkins University.  
+The main focus of the project is to look at the data in geographical and temporal dimensions.  
+It is a part of the course "Data Science as a Field" in Master of Science in Data Science at the University of Colorado.
+
+## Data Description
+
+Data is provided from Johns Hopkins University.
+https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data/csse_covid_19_time_series   
+It is collected by the University and is available on GitHub.  
+Original data sources mostly country specific.  
+As data dedicated to the US was covered during lectures, the focus of this project is on the global data.
+  
+```{r imports}
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(dplyr))
+```
+
+
+### Data Import and Structure
+  
+```{r data import}
+url_in <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/4360e50239b4eb6b22f3a1759323748f36752177/csse_covid_19_data/csse_covid_19_time_series/"
+cases <- "time_series_covid19_confirmed_global.csv"
+deaths <- "time_series_covid19_deaths_global.csv"
+recovered <- "time_series_covid19_recovered_global.csv"
+
+global_cases <- read.csv(paste0(url_in, cases))
+global_deaths <- read.csv(paste0(url_in, deaths))
+global_recovered <- read.csv(paste0(url_in, recovered))  
+
+
+print(colnames(global_cases)[1:10])
+print(colnames(global_deaths)[1:10])
+print(colnames(global_recovered)[1:10])
+```
+
+Originaly there are 3 dataframes:
+- global_cases
+- global_deaths
+- global_recovered
+Each dataframe has the following columns:
+- Province.State
+- Country.Region
+- Lat
+- Long
+- Series of columns with Date as header, each column contains the number of cases, deaths or recovered for that date.
+
+## Tidy and Transforming Data
+
+### Data Cleaning
+
+We will omit Lat and Long columns.  
+The first two columns are factors.  
+To streamline the analysis we will pivot the dataframes to long format.  
+So each row will have data for one date, one country and one province/state.  
+
+``` {r work with locations}  
+global_cases <- global_cases %>% 
+  rename_with(~ gsub("^X", "", .), starts_with("X"))
+global_deaths <- global_deaths %>%
+    rename_with(~ gsub("^X", "", .), starts_with("X"))
+global_recovered <- global_recovered %>%
+    rename_with(~ gsub("^X", "", .), starts_with("X"))
+
+global_cases <- global_cases %>% 
+  select(-c(Lat, Long)) %>% 
+  pivot_longer(cols = -c(Province.State, Country.Region), names_to = "Date", values_to = "Cases") %>% 
+  mutate(Date = mdy(Date),
+         Province.State = as.factor(Province.State), 
+         Country.Region = as.factor(Country.Region))
+
+global_deaths <- global_deaths %>%
+  select(-c(Lat, Long)) %>% 
+  pivot_longer(cols = -c(Province.State, Country.Region), names_to = "Date", values_to = "Deaths") %>% 
+  mutate(Date = mdy(Date),
+         Province.State = as.factor(Province.State), 
+         Country.Region = as.factor(Country.Region))
+
+global_recovered <- global_recovered %>%
+  select(-c(Lat, Long)) %>% 
+  pivot_longer(cols = -c(Province.State, Country.Region), names_to = "Date", values_to = "Recovered") %>% 
+  mutate(Date = mdy(Date),
+         Province.State = as.factor(Province.State), 
+         Country.Region = as.factor(Country.Region))
+
+print(head(global_cases))
+```
+
+``` {r check missing values}
+
+# Count NA for data column 
+print(sum(is.na(global_cases$Cases)))
+print(sum(is.na(global_deaths$Deaths)))
+print(sum(is.na(global_recovered$Recovered)))
+
+# Count NA for date column
+print(sum(is.na(global_cases$Date)))
+print(sum(is.na(global_deaths$Date)))
+print(sum(is.na(global_recovered$Date)))
+
+# Total number of rows 
+print(nrow(global_cases))
+print(nrow(global_deaths))
+print(nrow(global_recovered))
+```
+
+There are no missing values, however dataframe with recovered cases has smaller number of values that the other two.
+
+``` {r dates}
+
+# Print end and start dates
+print(paste0("Start date Cases: ", min(global_cases$Date)))
+print(paste0("End date Cases: ", max(global_cases$Date)))
+
+print(paste0("Start date Deaths: ", min(global_deaths$Date)))
+print(paste0("End date Deaths: ", max(global_deaths$Date)))
+
+print(paste0("Start date Recovered: ", min(global_recovered$Date)))
+print(paste0("End date Recovered: ", max(global_recovered$Date)))
+```
+
+All the dataframes has the same data range starting from 22 Jan 2020 till 9 March 2023.
+
+``` {r countries}
+print(paste0("Number of countries: ", length(unique(global_cases$Country.Region))))
+print(paste0("Number of countries: ", length(unique(global_deaths$Country.Region))))
+print(paste0("Number of countries: ", length(unique(global_recovered$Country.Region))))
+``` 
+
+Set of countries has the same number of unique values for each dataframe.  
+
+### Combining Dataframes
+
+To streamline the analysis we will join the dataframes on columns Country.Region, Province.State and Date.
+
+``` {r joining dataframes}
+global_data <- global_cases %>% 
+  left_join(global_deaths, by = c("Country.Region", "Province.State", "Date")) %>% 
+  left_join(global_recovered, by = c("Country.Region", "Province.State", "Date"))
+print(head(global_data))
+```
+
+Now each row represents a date, country and province/state and number of cases, deaths and recovered.
+
+``` {r check missing values in the combined dataframes}
+print(paste0("Number of rows: ", nrow(global_data)))
+print(paste0("Number of NA in Country.Region: ", sum(is.na(global_data$Country.Region))))
+print(paste0("Number of NA in Province.State: ", sum(is.na(global_data$Province.State))))
+print(paste0("Number of NA in Date: ", sum(is.na(global_data$Date))))
+print(paste0("Number of NA in Cases: ", sum(is.na(global_data$Cases))))
+print(paste0("Number of NA in Deaths: ", sum(is.na(global_data$Deaths))))
+print(paste0("Number of NA in Recovered: ", sum(is.na(global_data$Recovered))))
+```
+
+The only column wits missing values so far is Recovered.  
+We will deal with it later.  
+
+``` {r countries by number of entries}
+print(paste0("Number of unique values in Country.Region: ", length(unique(global_data$Country.Region))))
+print(paste0("Number of unique values in Province.State: ", length(unique(global_data$Province.State))))
+
+
+# number of occurances of each value sorted from most to least frequent
+print(global_data %>% 
+  group_by(Country.Region) %>% 
+  summarise(n = n()) %>% 
+  arrange(desc(n)) %>% 
+  head(10))
+print(global_data %>%
+    group_by(Province.State) %>% 
+    summarise(n = n()) %>% 
+    arrange(desc(n)) %>% 
+    head(10))
+```
+
+There are only a few counties with enlarged ammount of entries, which is related to the fact that for them Provincies were taking into account.
+We will combine the data for each country and remove Province.State column.
+
+``` {r combine data for countries}
+global_data <- global_data %>% 
+  group_by(Country.Region, Date) %>% 
+  summarise(Cases = sum(Cases, na.rm = TRUE), 
+            Deaths = sum(Deaths, na.rm = TRUE), 
+            Recovered = sum(Recovered, na.rm = TRUE)) %>% 
+  ungroup()
+print(head(global_data))
+print(paste0("Number of rows: ", nrow(global_data)))
+```
+
+### Summary
+
+``` {r str}
+str(global_data)
+```
+
+``` {r summary of data}
+summary(global_data)
+``` 
+
+Now there is set ammount of data for each country.  
+Recovered has surprising -1 value as min, and median is 0 so this is rather non informative column.
+Max cases is rather big, we can take a look on it:
+
+``` {r check max values for deaths}
+print(global_data %>% 
+  filter(Cases == max(Cases, na.rm = TRUE)) %>% 
+  select(Country.Region, Date, Cases, Deaths, Recovered))
+```
+
+It is in allignment with the data from the US.  
+
+### Joining population data
+
+For further analysis it would be important to have total population for each country.  
+We will join the data with population data from the same source.  
+
+``` {r join population data}
+table_with_population <- read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/4360e50239b4eb6b22f3a1759323748f36752177/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv")
+print(head(table_with_population))
+# only need 'Country_Region', 'Population'
+table_with_population <- table_with_population %>% 
+  select(Country_Region, Population) %>% 
+  rename(Country.Region = Country_Region)
+print(head(table_with_population))
+```
+
+As we only need country and its population - rest can be ommited.
+
+``` {r check population data}
+table_with_population <- table_with_population %>% 
+  group_by(Country.Region) %>% 
+  summarise(Population = sum(Population, na.rm = TRUE)) %>% 
+  ungroup()
+
+print(table_with_population %>% 
+  arrange(Population) %>% 
+  head(50))
+```
+
+There are countries with 0 population.  
+We will also remove countries with population less than 1 million as it creates a lot of noise in the data.
+
+``` {r joining the data}
+# just join the data 
+global_data <- global_data %>% 
+  left_join(table_with_population, by = "Country.Region")
+
+# get read of countries with Population < 1000000
+global_data <- global_data %>% 
+  filter(Population > 1000000)
+
+print(head(global_data))
+```
+
+### Summary on Tidy and Transforming Data  
+The data was combined and brought to pivot format.  
+Necessary data transformation were performed: Country to factor, Date to date.  
+Redundant columns (Lat, Long) were removed.  
+Data was combined over provinces/states and this column was removed as well.  
+Population data was joined to the data.
+Countries with small population were removed from consideration.
+The data is now ready for analysis.
+
+## Visualising & Analyzing
+
+### Worldwide Data over time
+
+First lets' take a look on worldwide data.
+``` {r cases, deths, recovered worldwide}
+df_combined_world <- global_data %>% 
+  group_by(Date) %>% 
+  summarise(Cases = sum(Cases, na.rm = TRUE), 
+            Deaths = sum(Deaths, na.rm = TRUE), 
+            Recovered = sum(Recovered, na.rm = TRUE)) %>% 
+  ungroup()
+print(head(df_combined_world)[, 1:2])
+
+ggplot(global_data, aes(x = Date)) + 
+  geom_line(aes(y = Cases, color = "Cases")) + 
+  geom_line(aes(y = Deaths, color = "Deaths")) + 
+  geom_line(aes(y = Recovered, color = "Recovered")) + 
+  labs(title = "COVID-19 Cases, Deaths and Recovered Worldwide", 
+       x = "Date", 
+       y = "Count") + 
+  scale_color_manual(values = c("Cases" = "blue", "Deaths" = "red", "Recovered" = "green")) + 
+  theme_minimal()
+```
+
+It is clear that data on number of recovered cases is not reliable.  
+This data was stopped to be collected at some point and there is a huge difference between sum of deaths and recovered vs number of cases.
+So, we will not use this data for further analysis.
+
+``` {r remove recovered}
+global_data  <- global_data  %>% 
+  select(-Recovered)
+df_combined_world <- df_combined_world %>% 
+  select(-Recovered)
+```
+
+Plotting cases and deaths separately to see the trends.
+
+``` {r cases and deths}
+ggplot(df_combined_world, aes(x = Date)) + 
+  geom_line(aes(y = Deaths, color = "Deaths")) + 
+  labs(title = "COVID-19 Deaths Worldwide", 
+       x = "Date", 
+       y = "Count") + 
+  scale_color_manual(values = c("Deaths" = "red")) + 
+  theme_minimal()
+
+ggplot(df_combined_world, aes(x = Date)) + 
+  geom_line(aes(y = Cases, color = "Cases")) + 
+  labs(title = "COVID-19 Cases Worldwide", 
+       x = "Date", 
+       y = "Count") + 
+  scale_color_manual(values = c("Cases" = "blue")) + 
+  theme_minimal()
+```
+
+Both total number of cases and deaths are increasing over time.  
+However it is clarly visible that the number of deaths is not increasing as fast as the number of cases after the beggining of the pandemic.
+
+### Deaths and Cases relation
+
+To get a better understanding we can take a look on number of new cases and deaths per day.
+``` {r new cases and deaths manipulations}
+df_combined_world <- df_combined_world %>% 
+  mutate(New.Cases = Cases - lag(Cases, 1), 
+         New.Deaths = Deaths - lag(Deaths, 1))
+global_data <- global_data %>% 
+  mutate(New.Cases = Cases - lag(Cases, 1), 
+         New.Deaths = Deaths - lag(Deaths, 1))
+```
+
+Logarithmic scale is used to see the trends better.
+``` {r new cases and deaths}
+ggplot(df_combined_world, aes(x = Date)) + 
+  geom_line(aes(y = New.Cases, color = "New Cases")) + 
+  geom_line(aes(y = New.Deaths, color = "New Deaths")) + 
+  labs(title = "COVID-19 New Cases and Deaths Worldwide", 
+       x = "Date", 
+       y = "Count (log scale)",
+       color = "Metric") + 
+  scale_color_manual(values = c("New Cases" = "blue", "New Deaths" = "red")) + 
+  theme_minimal() + 
+  scale_y_log10()
+```
+
+The number of both new cases and deaths has stabilized after spring 2020 and was constant for the next 3 years.
+
+``` {r relation of deaths and cases}
+
+ggplot(df_combined_world, aes(x = Cases, y = Deaths)) + 
+  geom_point() + 
+  labs(title = "COVID-19 Cases vs Deaths Worldwide", 
+       x = "Cases", 
+       y = "Deaths") + 
+  theme_minimal()
+```
+
+The change of trend of relation of number of deaths and cases is clearly visible.  
+
+``` {r relation of new deaths and cases over time}
+df_combined_world$deaths_to_cases <- df_combined_world$Deaths / df_combined_world$Cases
+ggplot(df_combined_world, aes(x = Date, y = deaths_to_cases)) + 
+  geom_line() + 
+  labs(title = "COVID-19 Deaths to Cases Ratio Worldwide", 
+       x = "Date", 
+       y = "Deaths to Cases Ratio") + 
+  theme_minimal()
+```
+
+There are 3 distinct periods in the data
+1. First period is from the beginning of the pandemic till the end of 2020.  
+   The number of deaths to cases ratio is high and unstable.  
+2. Second period is from the beginning of 2021 till the end of 2021.  
+   The number of deaths to cases ratio is decreasing and is around 0.02.
+3. Third period is from the beginning of 2022 onwards.  
+   The number of deaths to cases ratio has decreased significantly and goes to 0.
+
+The first period is likely related to the fact that the virus was new and there was no vaccine.  
+Not only methods of treatment were not known, but also the virus was not well studied.  
+In addition, limited supply of testing equipement would bring high noise to the data.  
+
+The second period is likely related to the fact that the vaccine was introduced and the virus was better studied.
+So, it is probably close to the real ratio of deaths to cases.  
+
+While the time from 2022 onwords may be related to both advances in treatment and evolution of the virus.
+The virus may have mutated and became less deadly, but more contagious.  
+This is also in agremeent with spike in number of cases in the beggining of 2022.
+
+### Data by countries
+
+Lets' take a look on number of cases in different countries.
+
+``` {r countries data}
+# Get the data for the top 10 countries by number of cases and plot number of new cases over time
+top_10_countries <- global_data %>% 
+  group_by(Country.Region) %>% 
+  summarise(Total.Cases = max(Cases)) %>% 
+  arrange(desc(Total.Cases)) %>% 
+  slice(1:10) 
+print(top_10_countries)
+```
+
+The same with relative number of cases to population.
+
+``` {r countries data relative}
+# Get the data for the top 10 countries by number of cases and plot number of new cases over time
+global_data$relative_cases <- global_data$Cases / global_data$Population
+top_10_countries <- global_data %>% 
+  group_by(Country.Region) %>% 
+  summarise(Total.Cases = max(relative_cases)) %>% 
+  arrange(desc(Total.Cases)) %>% 
+  slice(1:10)
+print(top_10_countries)
+
+# same bottom 10
+bottom_10_countries <- global_data %>% 
+  group_by(Country.Region) %>% 
+  summarise(Total.Cases = max(relative_cases)) %>% 
+  arrange(Total.Cases) %>% 
+  slice(1:10)
+print(bottom_10_countries)
+```
+
+The highest number of cases is in the US.  
+However, the relative number of cases is more representative.  
+For Austria it is as much as 2/3 of population!  
+
+Another important observation is the bias of data.  
+Countries with the most cases per population are relativly rich.
+While those with the least cases are poor.  
+Which is more likely related to efficiency of testing and reporting other then real number of cases.
+
+### Summary on Data Analysis
+Data analysis allowed to take a look on the data from different angles.  
+First of all it was concluded that the data on recovered cases is not reliable.  
+New number of cases and deaths appered to be stable over time in exception of the initial period.  
+Intrigingly, the number of deaths to cases ratio over time has 3 distinct periods.
+The first period is from the beginning of the pandemic till the end of 2020 with high and unstable ratio.
+The second period is from the beginning of 2021 till the end of 2021 with ratio of deaths around 2%.
+The third period is from the beginning of 2022 onwards with decreasing ratio of deaths to cases going to 0.
+Country specific analysis is is not reliable due to data bias.
+
+## Modeling Data 
+
+To support our findings about the deaths to cases ratio we can study modeling for this data.
+
+``` {r modeling1}
+# Fit a linear model to the data
+model <- lm(deaths_to_cases ~ Date, data = df_combined_world)
+model_poly2 <- lm(deaths_to_cases ~ poly(Date, 2), data = df_combined_world)
+model_poly3 <- lm(deaths_to_cases ~ poly(Date, 3), data = df_combined_world)
+
+ggplot(df_combined_world, aes(x = Date, y = deaths_to_cases)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE, color = "red") + 
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = FALSE, color = "blue") +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3), se = FALSE, color = "green") +
+  labs(title = "COVID-19 Deaths to Cases Ratio Worldwide", 
+       x = "Date", 
+       y = "Deaths to Cases Ratio") + 
+  theme_minimal()
+```
+
+It can be claerly seen that feeting while time period does not work properly.
+
+``` {r model2}
+period1 <- df_combined_world %>% 
+  filter(Date < as.Date("2021-01-01"))
+
+period2 <- df_combined_world %>%
+  filter(Date >= as.Date("2021-01-01") & Date < as.Date("2022-01-01"))
+
+period3 <- df_combined_world %>%
+  filter(Date >= as.Date("2022-02-01"))
+
+model1 <- lm(deaths_to_cases ~ Date, data = period1)
+model2 <- lm(deaths_to_cases ~ Date, data = period2)
+model3 <- lm(deaths_to_cases ~ Date, data = period3)
+
+ggplot() + 
+  geom_point(data = df_combined_world, aes(x = Date, y = deaths_to_cases)) + 
+  geom_smooth(data = period1, aes(x = Date, y = deaths_to_cases), 
+              method = "lm", se = FALSE, color = "red") + 
+  geom_smooth(data = period2, aes(x = Date, y = deaths_to_cases), 
+              method = "lm", se = FALSE, color = "blue") + 
+  geom_smooth(data = period3, aes(x = Date, y = deaths_to_cases), 
+              method = "lm", se = FALSE, color = "green") + 
+  labs(title = "COVID-19 Deaths to Cases Ratio Worldwide by Period", 
+       x = "Date", 
+       y = "Deaths to Cases Ratio") + 
+  theme_minimal()
+```
+
+Aside from first highly fluctuating period, the data is well fitted by linear models.
+
+``` {r summary for moels}
+summary(model)
+summary(model1)
+summary(model2)
+summary(model3)
+```
+
+## Bias  
+### Bias from Data  
+The data is collected from different sources from different countries.  
+Moreover the data on COVID-19 was of great political importance at the time it was collected.
+Thus, extreme influence of country of origin can be anticipated.  
+Another bias source is lack of testing equipement in some countries at various times.  
+
+### Personal Bias
+I have witnessed the COVID-19 pandemic and it has affected my life and took lives of people I know.  
+Thus I have strong feelings about the data and the pandemic.  
+It is not affecting preliminary stages of analysis, but may influence the conclusions.
+
+## Conclusion  
+This project is dedicated to analysis of COVID-19 cases data provided by Johns Hopkins University.  
+Original data sources mostly country specific which leads to high bias, thsu the focus of this project is on the global data.  
+
+On the prepartion step data was cleaned and transformed.  
+Prodcuedre resulted combined pivoted dataframe with columns:
+    - Country.Region
+    - Date
+    - Cases
+    - Deaths
+    - Population
+
+During the exploratory data analysis it was concluded that the data on recovered cases is not reliable.
+New number of cases and deaths appered to be stable over time in exception of the initial period.
+Intrigingly, the number of deaths to cases ratio over time has 3 distinct periods.
+The first period is from the beginning of the pandemic till the end of 2020 with high and unstable ratio.
+The second period is from the beginning of 2021 till the end of 2021 with ratio of deaths around 2%.
+The third period is from the beginning of 2022 onwards with decreasing ratio of deaths to cases going to 0.
+
+This was additionaly supported by modeling the data with linear models over whole time and selected periods.
+
+It must be noted that the data is biased due to the fact that it was collected from different sources from different countries and the topic itself was of great political importance.  
+Wealthy countries with better testing and reporting systems are overrepresented in the data.
+
+## P.S.  
+Thank you for reading this report.  
+
+``` {r session info} 
+sessionInfo()
+```
