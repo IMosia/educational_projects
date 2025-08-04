@@ -1,4 +1,4 @@
-# edu_games  
+# Games Analysis
 Data analysis project for video games industry  
 **Games analysis**  
 **Aim:** To analyze the popularity of games in relation to the available parameters as well as users’ preferences.  

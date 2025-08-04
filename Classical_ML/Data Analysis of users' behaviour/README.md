@@ -1,4 +1,4 @@
-# edu_scooter
+# Scooter
 **Analysis of users’ behavior for scooter-renting service “GoFast”**  
 **Aim:** To analyze users’ behavior and get insides in typical users and trip profile. As well as to test marketing theories.  
 **Description:** After data cleaning and pre-processing available data was carefully analyzed revealing trends on subscription types, length and distance of rides, and users’ age. Additionally, based on combined pivot table profit for users’ group with and without subscription were analyzed. Several hypotheses were tested.  

@@ -1,4 +1,4 @@
-# edu_mobile
+# Mobile
 **Recommendation of tariffs**  
 **Aim:** To predict which mobile tariff will be more suitable for users based on their behaviour.  
 **Description:** A set of data including number of calls, SMS, and MBs of internet consumed was used to train several models: linear regression, decision tree, and random forest to solve classification task. Resulting predictions were testing with various metrics to ensure their quality.  

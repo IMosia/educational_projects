@@ -1,4 +1,4 @@
-# edu_comments
+# Comments
 Machine Learning for checking commentaries for toxicity   
 **Comments toxicity for Wikishop**  
 **Aim:** To build a machine learning algorithm to predict the toxicity of comments with at least 0.75 F1 score.  

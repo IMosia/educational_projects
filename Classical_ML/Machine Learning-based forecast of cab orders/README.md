@@ -1,4 +1,4 @@
-# edu_time
+# Time
 Machine Learning forecast of cab orders.  
 **Forecasting cab orders**  
 **Aim:** To build a Machine learning-based algorithm to forecast future cab demand.  

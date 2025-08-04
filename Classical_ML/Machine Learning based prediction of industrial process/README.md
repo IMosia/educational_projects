@@ -1,4 +1,4 @@
-# edu_gold
+# Gold
 Machine Learning based prediction of industrial process  
 **Recovering gold from ore**  
 **Aim:** A machine-learning-based approach for the prediction of the outcome of a complex chemical industry process.  

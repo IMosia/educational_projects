@@ -1,4 +1,4 @@
-# edu_math  
+# Math  
 Math for safe data usage in ML  
 **Protection of personal data of clients**  
 **Aim:** To encode personal data and ensure that encoding does not harm machine learning.  

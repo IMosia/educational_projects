@@ -1,4 +1,4 @@
-# edu_cars
+# Used Cars
 Machine Learning based prediction of used-car prices  
 **Determining the value of cars**  
 **Aim:** to predict the price of used cars based on their parameters with machine-learning algorithms, considering learning and prediction time.  
